@@ -1,8 +1,8 @@
 import Foundation
-import Combine
+import Observation
 
 /// States for the pick-and-place task
-enum PickPlaceState: String, CaseIterable {
+enum PickPlaceState: String, CaseIterable, Sendable {
     case idle
     case scanning
     case targetAcquired
@@ -16,16 +16,18 @@ enum PickPlaceState: String, CaseIterable {
 }
 
 /// Orchestrates the full pick-and-place cycle
-class PickPlaceStateMachine: ObservableObject {
-    @Published var state: PickPlaceState = .idle
-    @Published var targetObject: DetectedObject?
-    @Published var statusMessage: String = "Idle"
+@MainActor
+@Observable
+final class PickPlaceStateMachine {
+    var state: PickPlaceState = .idle
+    var targetObject: DetectedObject?
+    var statusMessage: String = "Idle"
 
     private let bleManager: BLEManager
     private let graspPlanner = GraspPlanner()
     private var commandQueue: [GraspCommand] = []
-    private var commandTimer: Timer?
-    private let commandInterval: TimeInterval = 1.5 // seconds between commands
+    private var executionTask: Task<Void, Never>?
+    private let commandInterval: Duration = .milliseconds(1500)
 
     init(bleManager: BLEManager) {
         self.bleManager = bleManager
@@ -39,8 +41,8 @@ class PickPlaceStateMachine: ObservableObject {
 
     /// Stop the current operation and return home
     func stop() {
-        commandTimer?.invalidate()
-        commandTimer = nil
+        executionTask?.cancel()
+        executionTask = nil
         commandQueue.removeAll()
         bleManager.send(.stop)
         transition(to: .idle)
@@ -68,7 +70,7 @@ class PickPlaceStateMachine: ObservableObject {
 
         // Queue all commands
         commandQueue = pickCommands + placeCommands
-        executeNextCommand()
+        executeCommands()
     }
 
     // MARK: - Private
@@ -79,21 +81,19 @@ class PickPlaceStateMachine: ObservableObject {
         print("PickPlace: \(newState.rawValue)")
     }
 
-    private func executeNextCommand() {
-        guard !commandQueue.isEmpty else {
-            transition(to: .idle)
-            return
-        }
+    private func executeCommands() {
+        executionTask = Task { [weak self] in
+            while let self, !self.commandQueue.isEmpty, !Task.isCancelled {
+                let command = self.commandQueue.removeFirst()
+                self.bleManager.send(command)
+                self.updateStateForCommand(command)
 
-        let command = commandQueue.removeFirst()
-        bleManager.send(command)
+                try? await Task.sleep(for: self.commandInterval)
+            }
 
-        // Update state based on command type
-        updateStateForCommand(command)
-
-        // Schedule next command
-        commandTimer = Timer.scheduledTimer(withTimeInterval: commandInterval, repeats: false) { [weak self] _ in
-            self?.executeNextCommand()
+            if let self, !Task.isCancelled {
+                self.transition(to: .idle)
+            }
         }
     }
 

@@ -1,7 +1,7 @@
 import Foundation
 
 /// Motor command types matching the firmware protocol
-enum CommandType: UInt8 {
+enum CommandType: UInt8, Sendable {
     case moveJoint   = 0x01
     case moveAll     = 0x02
     case gripper     = 0x03
@@ -11,7 +11,7 @@ enum CommandType: UInt8 {
 }
 
 /// A single command to send to the robot
-struct GraspCommand {
+struct GraspCommand: Sendable {
     let type: CommandType
     let shoulderAngle: UInt8
     let elbowAngle: UInt8

@@ -2,7 +2,7 @@ import Foundation
 import CoreGraphics
 
 /// Represents an object detected by the vision pipeline
-struct DetectedObject: Identifiable {
+struct DetectedObject: Identifiable, Sendable {
     let id = UUID()
     let label: String
     let confidence: Float

@@ -2,7 +2,7 @@ import SwiftUI
 
 /// Calibration interface for setting joint positions and limits
 struct CalibrationView: View {
-    @EnvironmentObject var bleManager: BLEManager
+    @Environment(BLEManager.self) var bleManager
     @State private var shoulderAngle: Double = 90
     @State private var elbowAngle: Double = 90
     @State private var gripperAngle: Double = 90

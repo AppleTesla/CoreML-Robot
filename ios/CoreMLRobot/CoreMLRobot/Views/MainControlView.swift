@@ -2,9 +2,9 @@ import SwiftUI
 
 /// Primary control interface with camera preview, detection overlay, and pick-and-place controls
 struct MainControlView: View {
-    @EnvironmentObject var bleManager: BLEManager
-    @StateObject private var cameraManager = CameraManager()
-    @StateObject private var objectDetector = ObjectDetector()
+    @Environment(BLEManager.self) var bleManager
+    @State private var cameraManager = CameraManager()
+    @State private var objectDetector = ObjectDetector()
     @State private var stateMachine: PickPlaceStateMachine?
 
     var body: some View {
@@ -42,8 +42,8 @@ struct MainControlView: View {
             .navigationBarTitleDisplayMode(.inline)
             .onAppear {
                 cameraManager.configure()
-                cameraManager.delegate = objectDetector
                 objectDetector.configure()
+                objectDetector.startDetecting(from: cameraManager)
                 cameraManager.start()
                 stateMachine = PickPlaceStateMachine(bleManager: bleManager)
             }

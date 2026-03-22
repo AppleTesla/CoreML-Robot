@@ -1,12 +1,14 @@
 import Vision
 import CoreML
 import AVFoundation
-import Combine
+import Observation
 
 /// Runs CoreML object detection on camera frames
-class ObjectDetector: ObservableObject {
-    @Published var detections: [DetectedObject] = []
-    @Published var inferenceTime: TimeInterval = 0
+@MainActor
+@Observable
+final class ObjectDetector {
+    var detections: [DetectedObject] = []
+    var inferenceTime: TimeInterval = 0
 
     private var visionModel: VNCoreMLModel?
     private var request: VNCoreMLRequest?
@@ -28,7 +30,6 @@ class ObjectDetector: ObservableObject {
     }
 
     private func loadCustomModel() -> VNCoreMLModel? {
-        // Look for a compiled model in the app bundle
         guard let modelURL = Bundle.main.url(forResource: "ObjectDetector", withExtension: "mlmodelc"),
               let mlModel = try? MLModel(contentsOf: modelURL),
               let visionModel = try? VNCoreMLModel(for: mlModel) else {
@@ -40,9 +41,25 @@ class ObjectDetector: ObservableObject {
     private func setupVisionRequest(with model: VNCoreMLModel) {
         self.visionModel = model
         request = VNCoreMLRequest(model: model) { [weak self] request, error in
-            self?.processResults(request.results)
+            let results = request.results
+            Task { @MainActor [weak self] in
+                self?.processResults(results)
+            }
         }
         request?.imageCropAndScaleOption = .scaleFill
+    }
+
+    /// Start consuming frames from a CameraManager's stream
+    func startDetecting(from cameraManager: CameraManager) {
+        let (subscriberID, stream) = cameraManager.frameStream()
+        Task { [weak self] in
+            for await sampleBuffer in stream {
+                guard let self else { break }
+                await self.detect(in: sampleBuffer)
+            }
+            // Clean up if the task is cancelled
+            await cameraManager.removeSubscriber(subscriberID)
+        }
     }
 
     func detect(in sampleBuffer: CMSampleBuffer) {
@@ -60,10 +77,7 @@ class ObjectDetector: ObservableObject {
         let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, options: [:])
         do {
             try handler.perform([request])
-            let elapsed = CACurrentMediaTime() - startTime
-            DispatchQueue.main.async {
-                self.inferenceTime = elapsed
-            }
+            inferenceTime = CACurrentMediaTime() - startTime
         } catch {
             print("ObjectDetector error: \(error)")
         }
@@ -73,7 +87,7 @@ class ObjectDetector: ObservableObject {
     private func processResults(_ results: [Any]?) {
         guard let observations = results as? [VNRecognizedObjectObservation] else { return }
 
-        let detected = observations
+        detections = observations
             .filter { $0.confidence >= confidenceThreshold }
             .map { observation -> DetectedObject in
                 let label = observation.labels.first?.identifier ?? "unknown"
@@ -84,16 +98,5 @@ class ObjectDetector: ObservableObject {
                     timestamp: Date()
                 )
             }
-
-        DispatchQueue.main.async {
-            self.detections = detected
-        }
-    }
-}
-
-// MARK: - CameraManagerDelegate
-extension ObjectDetector: CameraManagerDelegate {
-    func cameraManager(_ manager: CameraManager, didOutput sampleBuffer: CMSampleBuffer) {
-        detect(in: sampleBuffer)
     }
 }

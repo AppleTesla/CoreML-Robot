@@ -1,21 +1,20 @@
 import AVFoundation
 import UIKit
+import Observation
 
-/// Delegate protocol for receiving camera frames
-protocol CameraManagerDelegate: AnyObject {
-    func cameraManager(_ manager: CameraManager, didOutput sampleBuffer: CMSampleBuffer)
-}
-
-/// Manages AVCaptureSession for real-time camera input
-class CameraManager: NSObject, ObservableObject {
-    @Published var isRunning = false
-    @Published var error: String?
-
-    weak var delegate: CameraManagerDelegate?
+/// Manages AVCaptureSession for real-time camera input, delivering frames via AsyncStream
+@MainActor
+@Observable
+final class CameraManager: NSObject {
+    var isRunning = false
+    var error: String?
 
     let captureSession = AVCaptureSession()
     private let videoOutput = AVCaptureVideoDataOutput()
     private let processingQueue = DispatchQueue(label: "com.coremlrobot.camera", qos: .userInteractive)
+
+    // MARK: - Frame stream keyed by subscriber UUID
+    private var frameContinuations: [UUID: AsyncStream<CMSampleBuffer>.Continuation] = [:]
 
     func configure() {
         captureSession.beginConfiguration()
@@ -56,7 +55,7 @@ class CameraManager: NSObject, ObservableObject {
         guard !captureSession.isRunning else { return }
         processingQueue.async { [weak self] in
             self?.captureSession.startRunning()
-            DispatchQueue.main.async {
+            Task { @MainActor [weak self] in
                 self?.isRunning = true
             }
         }
@@ -66,17 +65,44 @@ class CameraManager: NSObject, ObservableObject {
         guard captureSession.isRunning else { return }
         processingQueue.async { [weak self] in
             self?.captureSession.stopRunning()
-            DispatchQueue.main.async {
+            Task { @MainActor [weak self] in
                 self?.isRunning = false
             }
         }
+    }
+
+    /// Subscribe to camera frames. Returns a stream and its subscriber ID (for unsubscription).
+    func frameStream() -> (id: UUID, stream: AsyncStream<CMSampleBuffer>) {
+        let id = UUID()
+        let stream = AsyncStream<CMSampleBuffer> { continuation in
+            frameContinuations[id] = continuation
+            continuation.onTermination = { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    self?.frameContinuations.removeValue(forKey: id)
+                }
+            }
+        }
+        return (id, stream)
+    }
+
+    /// Remove a frame subscriber
+    func removeSubscriber(_ id: UUID) {
+        frameContinuations.removeValue(forKey: id)?.finish()
     }
 }
 
 // MARK: - AVCaptureVideoDataOutputSampleBufferDelegate
 extension CameraManager: AVCaptureVideoDataOutputSampleBufferDelegate {
-    func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer,
+    nonisolated func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer,
                        from connection: AVCaptureConnection) {
-        delegate?.cameraManager(self, didOutput: sampleBuffer)
+        // Yield to all subscribers from the processing queue
+        // frameContinuations is MainActor-isolated, but yield is safe to call from any context
+        // We capture the continuations snapshot on MainActor then yield
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            for continuation in self.frameContinuations.values {
+                continuation.yield(sampleBuffer)
+            }
+        }
     }
 }

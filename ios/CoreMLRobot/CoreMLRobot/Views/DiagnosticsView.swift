@@ -2,7 +2,7 @@ import SwiftUI
 
 /// Diagnostics view showing robot status, BLE signal, and servo positions
 struct DiagnosticsView: View {
-    @EnvironmentObject var bleManager: BLEManager
+    @Environment(BLEManager.self) var bleManager
 
     var body: some View {
         NavigationView {
