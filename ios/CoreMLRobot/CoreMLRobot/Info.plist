@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>NSCameraUsageDescription</key>
+    <string>CoreML Robot needs camera access to detect objects for the robot to pick up.</string>
+    <key>NSBluetoothAlwaysUsageDescription</key>
+    <string>CoreML Robot uses Bluetooth to communicate with the ESP32 robot controller.</string>
+    <key>NSBluetoothPeripheralUsageDescription</key>
+    <string>CoreML Robot uses Bluetooth to communicate with the ESP32 robot controller.</string>
+</dict>
+</plist>

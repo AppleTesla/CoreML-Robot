@@ -1,0 +1,48 @@
+# Xcode
+build/
+DerivedData/
+*.xcuserdata
+*.xcworkspace
+!*.xcworkspace/contents.xcworkspacedata
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Swift Package Manager
+.build/
+Packages/
+Package.resolved
+
+# CocoaPods
+Pods/
+
+# PlatformIO
+firmware/.pio/
+firmware/.vscode/
+
+# CoreML
+*.mlmodelc
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+*.swp
+*.swo
+
+# Training data (large files)
+ml/data/raw/
+ml/data/augmented/
